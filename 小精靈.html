@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>絲滑版小精靈物理模擬</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f0f1a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        canvas { border: 2px solid #00d2ff; background-color: #050510; box-shadow: 0 0 20px rgba(0, 210, 255, 0.2); }
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            border: 1px solid #333;
+            color: #e0e0e0;
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            width: 260px;
+        }
+        h2 { margin-top: 0; color: #00d2ff; text-transform: uppercase; font-size: 1.2rem; letter-spacing: 1px; }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #aaffaa; font-size: 0.9rem; }
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 6px;
+            background: #444;
+            outline: none;
+            border-radius: 3px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d2ff;
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 0 10px #00d2ff;
+        }
+        #score-board {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;
+        }
+        #score { color: #ffcc00; font-size: 1.4em; font-weight: bold; }
+        #game-status { color: #ff4d4d; font-weight: bold; font-size: 1.1em; min-height: 1.5em; text-align: center; margin-top: 10px;}
+        .instruction { font-size: 0.8rem; color: #888; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-overlay">
+        <h2>物理參數控制</h2>
+        
+        <div class="control-group">
+            <label>移動速度 (Velocity)</label>
+            <input type="range" id="speedSlider" min="1" max="4" value="2" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <label>碰撞箱大小 (Hitbox Size)</label>
+            <input type="range" id="hitboxSlider" min="2" max="14" value="8" step="1">
+            <div class="instruction">數值越小，越不容易卡牆</div>
+        </div>
+
+        <div id="score-board">
+            <span>得分:</span>
+            <span id="score">0</span>
+        </div>
+        <div id="game-status"></div>
+        <div class="instruction" style="text-align: center; margin-top: 10px;">使用方向鍵移動</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 畫布設定
+        canvas.width = 600;
+        canvas.height = 600;
+        const GRID_SIZE = 30; // 每個格子 30x30
+
+        // 顏色定義
+        const COLORS = {
+            wall: '#1a1a40',
+            wallBorder: '#0055ff',
+            pacman: '#ffff00',
+            pellet: '#ffcc00',
+            trail: 'rgba(5, 5, 16, 0.2)' // 殘影清除顏色
+        };
+
+        // 遊戲狀態
+        let score = 0;
+        let gameOver = false;
+        let gameWin = false;
+        let totalPellets = 0;
+
+        // 迷宮地圖 (1:牆, 0:空, 2:豆子)
+        // 為了讓測試更順暢，稍微簡化了中心區域
+        const initialMaze = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,2,1,1,1,2,1,1,2,1,1,1,2,1,1,2,1],
+            [1,2,1,1,2,1,1,1,2,1,1,2,1,1,1,2,1,1,2,1],
+            [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,2,1,2,1,1,1,1,1,1,2,1,2,1,1,2,1],
+            [1,2,2,2,2,1,2,2,2,1,1,2,2,2,1,2,2,2,2,1],
+            [1,1,1,1,2,1,1,1,2,1,1,2,1,1,1,2,1,1,1,1],
+            [1,1,1,1,2,1,2,2,2,2,2,2,2,2,1,2,1,1,1,1],
+            [1,1,1,1,2,1,2,1,1,0,0,1,1,2,1,2,1,1,1,1],
+            [1,1,1,1,2,1,2,1,0,0,0,0,1,2,1,2,1,1,1,1], 
+            [1,1,1,1,2,1,2,2,2,2,2,2,2,2,1,2,1,1,1,1],
+            [1,1,1,1,2,1,1,1,2,1,1,2,1,1,1,2,1,1,1,1],
+            [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,2,1,1,1,2,1,1,2,1,1,1,2,1,1,2,1],
+            [1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,1],
+            [1,2,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,2,1],
+            [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+        
+        // 複製地圖以免修改到原始資料
+        let maze = JSON.parse(JSON.stringify(initialMaze));
+        totalPellets = maze.flat().filter(c => c === 2).length;
+
+        // 物理物件設定
+        const pacman = {
+            x: GRID_SIZE * 1.5,
+            y: GRID_SIZE * 1.5,
+            visualRadius: 13, // 眼睛看到的大小
+            collisionRadius: 8, // ★ 關鍵：物理判斷用的大小（比視覺小很多）
+            speed: 2,
+            dx: 0,
+            dy: 0,
+            nextDx: 0, // 預存的下一步指令
+            nextDy: 0,
+            angle: 0,
+            mouthOpen: 0,
+            mouthSpeed: 0.15
+        };
+
+        const ghosts = [
+            { x: GRID_SIZE * 9.5, y: GRID_SIZE * 9.5, color: '#ff0000', dx: 1, dy: 0 },
+            { x: GRID_SIZE * 10.5, y: GRID_SIZE * 9.5, color: '#00ff00', dx: -1, dy: 0 },
+            { x: GRID_SIZE * 9.5, y: GRID_SIZE * 10.5, color: '#00ffff', dx: 0, dy: 1 }
+        ];
+
+        // UI 連結
+        const speedSlider = document.getElementById('speedSlider');
+        const hitboxSlider = document.getElementById('hitboxSlider');
+        const scoreDisplay = document.getElementById('score');
+        const statusDisplay = document.getElementById('game-status');
+
+        speedSlider.addEventListener('input', (e) => pacman.speed = parseFloat(e.target.value));
+        hitboxSlider.addEventListener('input', (e) => pacman.collisionRadius = parseFloat(e.target.value));
+
+        // 鍵盤控制
+        document.addEventListener('keydown', (e) => {
+            if(gameOver || gameWin) return;
+            // 允許預存指令，讓轉彎手感更好
+            switch(e.key) {
+                case 'ArrowUp': pacman.nextDx = 0; pacman.nextDy = -1; break;
+                case 'ArrowDown': pacman.nextDx = 0; pacman.nextDy = 1; break;
+                case 'ArrowLeft': pacman.nextDx = -1; pacman.nextDy = 0; break;
+                case 'ArrowRight': pacman.nextDx = 1; pacman.nextDy = 0; break;
+            }
+        });
+
+        // 繪圖函數
+        function drawMaze() {
+            ctx.shadowBlur = 0;
+            for (let r = 0; r < maze.length; r++) {
+                for (let c = 0; c < maze[r].length; c++) {
+                    const x = c * GRID_SIZE;
+                    const y = r * GRID_SIZE;
+                    
+                    if (maze[r][c] === 1) {
+                        ctx.fillStyle = COLORS.wall;
+                        ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+                        ctx.strokeStyle = COLORS.wallBorder;
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(x, y, GRID_SIZE, GRID_SIZE);
+                    } else if (maze[r][c] === 2) {
+                        ctx.beginPath();
+                        ctx.arc(x + GRID_SIZE/2, y + GRID_SIZE/2, 3, 0, Math.PI*2);
+                        ctx.fillStyle = COLORS.pellet;
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        function drawPacman() {
+            ctx.save();
+            ctx.translate(pacman.x, pacman.y);
+            
+            // 計算旋轉角度
+            let targetAngle = 0;
+            if (pacman.dx === 1) targetAngle = 0;
+            if (pacman.dx === -1) targetAngle = Math.PI;
+            if (pacman.dy === -1) targetAngle = -Math.PI/2;
+            if (pacman.dy === 1) targetAngle = Math.PI/2;
+            
+            // 簡單的角度插值讓轉向不那麼生硬
+            pacman.angle = targetAngle; 
+
+            ctx.rotate(pacman.angle);
+
+            // 嘴巴動畫
+            pacman.mouthOpen += pacman.mouthSpeed;
+            if (pacman.mouthOpen > 0.25 * Math.PI || pacman.mouthOpen < 0) pacman.mouthSpeed *= -1;
+            
+            ctx.beginPath();
+            ctx.arc(0, 0, pacman.visualRadius, pacman.mouthOpen, 2 * Math.PI - pacman.mouthOpen);
+            ctx.lineTo(0, 0);
+            ctx.fillStyle = COLORS.pacman;
+            ctx.shadowColor = COLORS.pacman;
+            ctx.shadowBlur = 15;
+            ctx.fill();
+
+            // ★ 視覺化 Debug：畫出實際的碰撞箱 (綠色線框)
+            // 這是為了讓使用者「看見」為什麼現在移動很順暢
+            ctx.rotate(-pacman.angle); // 轉回來畫碰撞框
+            ctx.beginPath();
+            ctx.arc(0, 0, pacman.collisionRadius, 0, Math.PI*2);
+            ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function drawGhost(g) {
+            ctx.save();
+            ctx.translate(g.x, g.y);
+            ctx.fillStyle = g.color;
+            ctx.shadowColor = g.color;
+            ctx.shadowBlur = 10;
+            
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, Math.PI, 0);
+            ctx.lineTo(12, 12);
+            ctx.lineTo(-12, 12);
+            ctx.fill();
+            
+            // 眼睛
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(-4, -2, 4, 0, Math.PI*2);
+            ctx.arc(4, -2, 4, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        // ★ 核心物理引擎：檢測是否撞牆
+        function isWall(x, y, radius) {
+            // 檢查圓周上的四個點，確保不會卡進牆壁
+            const points = [
+                {x: x - radius, y: y}, // 左
+                {x: x + radius, y: y}, // 右
+                {x: x, y: y - radius}, // 上
+                {x: x, y: y + radius}  // 下
+            ];
+
+            for (let p of points) {
+                const col = Math.floor(p.x / GRID_SIZE);
+                const row = Math.floor(p.y / GRID_SIZE);
+                
+                // 邊界檢查
+                if (row < 0 || row >= maze.length || col < 0 || col >= maze[0].length) return true;
+                if (maze[row][col] === 1) return true;
+            }
+            return false;
+        }
+
+        function updatePhysics() {
+            if (gameOver || gameWin) return;
+
+            // 1. 嘗試轉向 (如果新方向沒牆壁，就轉向)
+            if (pacman.nextDx !== 0 || pacman.nextDy !== 0) {
+                // 預測如果轉向後的位置
+                let futureX = pacman.x + pacman.nextDx * pacman.speed;
+                let futureY = pacman.y + pacman.nextDy * pacman.speed;
+                
+                // 如果預測位置沒有撞牆，就立刻執行轉向
+                if (!isWall(futureX, futureY, pacman.collisionRadius)) {
+                    pacman.dx = pacman.nextDx;
+                    pacman.dy = pacman.nextDy;
+                    // 清空預存指令 (也可不清空以保持持續移動)
+                    // pacman.nextDx = 0; pacman.nextDy = 0; 
+                }
+            }
+
+            // 2. 執行移動 (軸分離：先 X 後 Y，避免一個軸撞牆導致全身卡死)
+            
+            // X 軸移動
+            let nextX = pacman.x + pacman.dx * pacman.speed;
+            if (!isWall(nextX, pacman.y, pacman.collisionRadius)) {
+                pacman.x = nextX;
+            } else {
+                // 撞牆修正：貼齊格線 (簡單處理：不移動)
+                // 為了更順暢，這裡其實可以做「圓整」，但在這個簡單demo中，不移動即可
+            }
+
+            // Y 軸移動
+            let nextY = pacman.y + pacman.dy * pacman.speed;
+            if (!isWall(pacman.x, nextY, pacman.collisionRadius)) {
+                pacman.y = nextY;
+            }
+
+            // 3. 吃豆子邏輯
+            const gridX = Math.floor(pacman.x / GRID_SIZE);
+            const gridY = Math.floor(pacman.y / GRID_SIZE);
+            if (maze[gridY][gridX] === 2) {
+                // 距離中心夠近才吃，增加真實感
+                const cellCenterX = gridX * GRID_SIZE + GRID_SIZE/2;
+                const cellCenterY = gridY * GRID_SIZE + GRID_SIZE/2;
+                const dist = Math.hypot(pacman.x - cellCenterX, pacman.y - cellCenterY);
+                
+                if (dist < 10) {
+                    maze[gridY][gridX] = 0;
+                    score++;
+                    scoreDisplay.innerText = score;
+                    if (score >= totalPellets) {
+                        gameWin = true;
+                        statusDisplay.innerText = "MISSION COMPLETE!";
+                        statusDisplay.style.color = "#00ff00";
+                    }
+                }
+            }
+        }
+
+        function updateGhosts() {
+            ghosts.forEach(g => {
+                let nextX = g.x + g.dx * 1.5; // 幽靈速度
+                let nextY = g.y + g.dy * 1.5;
+
+                // 簡單的隨機遊走 AI
+                if (isWall(nextX, nextY, 12)) {
+                    const dirs = [{x:1, y:0}, {x:-1, y:0}, {x:0, y:1}, {x:0, y:-1}];
+                    const validDirs = dirs.filter(d => !isWall(g.x + d.x * 5, g.y + d.y * 5, 12));
+                    
+                    if (validDirs.length > 0) {
+                        const pick = validDirs[Math.floor(Math.random() * validDirs.length)];
+                        g.dx = pick.x;
+                        g.dy = pick.y;
+                    } else {
+                        g.dx *= -1; g.dy *= -1; // 死路回頭
+                    }
+                } else {
+                    g.x = nextX;
+                    g.y = nextY;
+                }
+
+                // 碰撞檢測
+                const dist = Math.hypot(pacman.x - g.x, pacman.y - g.y);
+                if (dist < 20) {
+                    gameOver = true;
+                    statusDisplay.innerText = "GAME OVER";
+                }
+            });
+        }
+
+        function loop() {
+            // 畫布殘影清除
+            ctx.fillStyle = COLORS.trail;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawMaze();
+            updatePhysics();
+            updateGhosts();
+            
+            ghosts.forEach(drawGhost);
+            drawPacman();
+
+            requestAnimationFrame(loop);
+        }
+
+        // 啟動
+        loop();
+
+    </script>
+</body>
+</html>

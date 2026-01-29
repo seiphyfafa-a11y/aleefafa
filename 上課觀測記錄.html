@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物理課堂行為觀測記錄系統</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --panel-bg: #ffffff;
+            --border-color: #dcdcdc;
+            --primary-color: #1a73e8; /* 物理藍 */
+            --text-color: #333;
+            /* 行為顏色定義 */
+            --c-serious: #28a745; /* 認真 - 綠光 */
+            --c-answer: #007bff; /* 搶答 - 藍光 */
+            --c-sleep: #6f42c1; /* 睡覺 - 紫光 */
+            --c-chat: #fd7e14; /* 聊天 - 橘光 */
+            --c-phone: #dc3545; /* 滑手機 - 紅光 */
+            --c-distract: #6c757d; /* 分心 - 灰光 */
+            --c-change: #17a2b8;  /* 換座位 - 青色 */
+            --c-custom: #d63384; /* 自訂 - 桃紅 */
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 頂部控制列 */
+        header {
+            background-color: var(--panel-bg);
+            padding: 0.8rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .title-group {
+            display: flex;
+            align-items: baseline;
+            gap: 20px;
+        }
+
+        /* 修改標題樣式 */
+        .main-title {
+            margin: 0;
+            font-size: 2.5rem; /* 字體放大 */
+            color: var(--primary-color);
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+
+        .mode-switch-group {
+            display: flex;
+            background: #e9ecef;
+            padding: 4px;
+            border-radius: 8px;
+            gap: 5px;
+        }
+
+        .mode-btn {
+            padding: 5px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            color: #666;
+            background: transparent;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: white;
+            color: var(--primary-color);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .config-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 6px;
+            border: 1px solid #eee;
+        }
+        
+        .config-label {
+            font-weight: bold;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        input[type="number"], input[type="text"] {
+            padding: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        input[type="number"] { width: 50px; }
+        input[type="text"] { width: 80px; text-align: center; }
+        
+        /* 鎖定輸入框樣式 */
+        input:disabled {
+            background-color: #e9ecef;
+            cursor: not-allowed;
+            color: #6c757d;
+        }
+
+        button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-primary:hover { background-color: #1557b0; }
+        
+        .btn-success { background-color: #218838; color: white; }
+        .btn-success:hover { background-color: #1e7e34; }
+        
+        .btn-warning { background-color: #ffc107; color: #333; }
+        .btn-warning:hover { background-color: #e0a800; }
+
+        .btn-info { background-color: #17a2b8; color: white; }
+        .btn-info:hover { background-color: #138496; }
+        
+        .btn-secondary { background-color: #6c757d; color: white; }
+        .btn-secondary:hover { background-color: #5a6268; }
+        
+        .btn-danger-outline {
+            background-color: transparent;
+            border: 1px solid #dc3545;
+            color: #dc3545;
+            font-size: 0.8rem;
+            padding: 4px 8px;
+        }
+        .btn-danger-outline:hover {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .btn-outline { background-color: transparent; border: 1px solid var(--border-color); color: #666; }
+        .btn-outline:hover { background-color: #f1f1f1; }
+
+        /* 主工作區 */
+        main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 左側座位表 */
+        #classroom-container {
+            flex: 3;
+            padding: 20px;
+            overflow: auto;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        #seating-grid {
+            display: grid;
+            gap: 15px; /* 預設教室模式有間距 */
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            /* Grid columns 將由 JS 動態設定 */
+        }
+
+        /* 實驗室模式專用：緊密排列 */
+        #seating-grid.lab-mode {
+            gap: 0px !important; /* 強制無間隙 */
+            border: 1px solid #ccc; /* 整體外框 */
+            padding: 0; /* 移除內距讓格子貼邊 */
+        }
+
+        /* 座位卡片樣式修正 - 區分姓名與按鈕區 */
+        .seat {
+            width: 100px;
+            height: 90px; /* 稍微加高 */
+            border: 2px solid #ccc; /* 預設邊框改深一點 */
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; /* 內容從上排到下 */
+            align-items: center;
+            position: relative;
+            background: #fdfdfd; /* 按鈕區背景 */
+            transition: transform 0.1s, border-color 0.2s;
+            cursor: pointer;
+            overflow: hidden; /* 確保圓角 */
+        }
+        
+        /* 實驗室模式下的座位樣式調整 */
+        .lab-mode .seat {
+            border-radius: 0; /* 移除圓角 */
+            border: 1px solid #ccc; /* 邊框變細 */
+            margin: 0; /* 確保無邊距 */
+            box-sizing: border-box; 
+        }
+
+        .seat:hover {
+            transform: translateY(-2px);
+            border-color: var(--primary-color);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            z-index: 10; /* 讓 hover 的格子浮上來 */
+        }
+
+        .seat.active-click {
+            animation: pulse 0.3s ease-in-out;
+            z-index: 11;
+        }
+
+        /* 姓名輸入區 - 做成名牌樣式 */
+        .seat input {
+            width: 100%;
+            padding: 5px 0;
+            border: none;
+            border-bottom: 1px solid #bbb;
+            text-align: center;
+            font-size: 1rem;
+            background: #e9ecef; /* 姓名區底色 (淺灰) */
+            color: #333;
+            font-weight: bold;
+            box-sizing: border-box;
+        }
+
+        .seat input:focus {
+            outline: none;
+            background: #dbeafe; /* 聚焦時變淺藍 */
+            border-bottom-color: var(--primary-color);
+        }
+
+        /* 點擊觸發區提示 (這裡其實是剩下的 div 空間) */
+        .seat::after {
+            content: "點擊記錄";
+            font-size: 0.75rem;
+            color: #aaa;
+            margin-top: auto;
+            margin-bottom: 5px;
+            pointer-events: none; /* 讓點擊穿透 */
+        }
+
+        .seat-badge {
+            position: absolute;
+            bottom: 5px; /* 改到底部 */
+            right: 5px;
+            background: #333;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 2;
+        }
+
+        /* 右側控制面板 */
+        aside {
+            flex: 1;
+            min-width: 320px;
+            max-width: 360px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        /* 行為選擇開關 */
+        .behavior-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .behavior-btn {
+            padding: 12px;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: bold;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 自訂輸入框樣式 */
+        .behavior-input-wrapper {
+            grid-column: span 2; /* 佔滿兩格 */
+            display: flex;
+            gap: 5px;
+        }
+        
+        #custom-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            text-align: center;
+            transition: all 0.2s;
+            background: #fff;
+        }
+        
+        #custom-input:focus {
+            border-color: var(--c-custom);
+            outline: none;
+            background: #fff0f6;
+        }
+        
+        #custom-input.active {
+            border-color: var(--c-custom);
+            background: #fff0f6;
+            color: var(--c-custom);
+            font-weight: bold;
+        }
+
+        /* 行為按鈕樣式 */
+        .b-serious { color: var(--c-serious); border-color: #e8f5e9; }
+        .b-serious.selected { background: var(--c-serious); color: white; border-color: var(--c-serious); }
+        
+        .b-answer { color: var(--c-answer); border-color: #e3f2fd; }
+        .b-answer.selected { background: var(--c-answer); color: white; border-color: var(--c-answer); }
+
+        .b-sleep { color: var(--c-sleep); border-color: #f3e5f5; }
+        .b-sleep.selected { background: var(--c-sleep); color: white; border-color: var(--c-sleep); }
+
+        .b-chat { color: var(--c-chat); border-color: #fff3e0; }
+        .b-chat.selected { background: var(--c-chat); color: white; border-color: var(--c-chat); }
+
+        .b-phone { color: var(--c-phone); border-color: #f8d7da; }
+        .b-phone.selected { background: var(--c-phone); color: white; border-color: var(--c-phone); }
+
+        .b-distract { color: var(--c-distract); border-color: #e2e3e5; }
+        .b-distract.selected { background: var(--c-distract); color: white; border-color: var(--c-distract); }
+        
+        /* 新增樣式 */
+        .b-change { color: var(--c-change); border-color: #e0f7fa; }
+        .b-change.selected { background: var(--c-change); color: white; border-color: var(--c-change); }
+
+        /* 記錄列表 */
+        .log-container {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            margin-bottom: 15px;
+            background: #fafafa;
+        }
+
+        .log-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .log-item:hover { background-color: #fff; }
+        .log-time { color: #888; margin-right: 8px; font-size: 0.8rem; }
+        .log-info { font-weight: 500; }
+        .log-tag { padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; color: white; margin-left: 5px; }
+        .del-btn { color: #ccc; cursor: pointer; padding: 0 5px; }
+        .del-btn:hover { color: #dc3545; }
+        
+        /* 標題與清除按鈕排版 */
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .log-header h3 {
+            margin: 0;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,0,0,0.2); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(0,0,0,0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+        }
+
+        .podium-marker {
+            width: 100%;
+            text-align: center;
+            margin-top: 15px; /* 調整間距 */
+            background: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            color: #495057;
+            font-weight: bold;
+            letter-spacing: 2px;
+            border: 2px solid #ced4da; /* 增加邊框讓講台更明顯 */
+        }
+        
+        /* Modal 樣式 (用於雲端設定) */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: none;
+            justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-content {
+            background: white; padding: 20px; border-radius: 8px; width: 400px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .modal-footer {
+            margin-top: 20px; text-align: right;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <!-- 第一排：基本設定與標題 -->
+    <div class="header-row">
+        <div class="title-group">
+            <h1 class="main-title">上課觀測記錄</h1>
+            
+            <!-- 模式切換 -->
+            <div class="mode-switch-group">
+                <button id="mode-classroom" class="mode-btn active" onclick="switchMode('classroom')">教室座位</button>
+                <button id="mode-lab" class="mode-btn" onclick="switchMode('lab')">實驗室</button>
+            </div>
+        </div>
+        
+        <div class="config-group">
+            <span class="config-label">班級代碼(3碼):</span>
+            <input type="text" id="class-code" placeholder="如: 101" maxlength="3">
+            <button class="btn-info" onclick="saveClassData()" title="儲存當前座位與名單">存檔</button>
+            <button class="btn-warning" onclick="loadClassData()" title="讀取該代碼的座位表">讀檔</button>
+        </div>
+    </div>
+
+    <!-- 第二排：座位表生成與匯入與備份 -->
+    <div class="header-row">
+        <div class="config-group">
+            <!-- 修正：將橫(列)的ID改為rows，直(排)的ID改為cols，以符合您的定義 -->
+            <span class="config-label">橫(列):</span>
+            <input type="number" id="rows" value="5" min="1" max="15">
+            <span class="config-label">直(排):</span>
+            <input type="number" id="cols" value="6" min="1" max="15">
+            <button class="btn-primary" onclick="manualGenerate()" title="清空並生成新的座位表">生成空座位</button>
+        </div>
+
+        <div class="config-group">
+            <input type="file" id="csv-upload" accept=".csv" style="display:none" onchange="processCSV(this)">
+            <button class="btn-success" onclick="document.getElementById('csv-upload').click()">📂 匯入CSV</button>
+            
+            <!-- 新增: 系統備份與還原 -->
+            <button class="btn-secondary" onclick="saveSystemConfig()" title="下載目前所有設定為檔案">備份設定(下載)</button>
+            <input type="file" id="config-upload" accept=".json" style="display:none" onchange="loadSystemConfig(this)">
+            <button class="btn-secondary" onclick="document.getElementById('config-upload').click()" title="從檔案還原設定">還原設定(上傳)</button>
+        </div>
+    </div>
+</header>
+
+<main>
+    <!-- 左側座位區 -->
+    <div id="classroom-container">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+            <div id="seating-grid">
+                <!-- 座位將由 JS 插入 -->
+            </div>
+            <div class="podium-marker" id="podium">講台 (TEACHER)</div>
+        </div>
+    </div>
+
+    <!-- 右側操作區 -->
+    <aside>
+        <h3>1. 學生上課模式</h3>
+        <div class="behavior-selector" id="behavior-group">
+            <div class="behavior-btn b-serious selected" onclick="selectBehavior('認真', this)">認真聽講</div>
+            <div class="behavior-btn b-answer" onclick="selectBehavior('搶答', this)">積極搶答</div>
+            <div class="behavior-btn b-sleep" onclick="selectBehavior('睡覺', this)">睡覺</div>
+            <div class="behavior-btn b-chat" onclick="selectBehavior('聊天', this)">聊天</div>
+            <div class="behavior-btn b-phone" onclick="selectBehavior('滑手機', this)">滑手機</div>
+            <div class="behavior-btn b-distract" onclick="selectBehavior('分心', this)">分心/發呆</div>
+            <div class="behavior-btn b-change" onclick="selectBehavior('換座位', this)">換座位</div>
+            
+            <div class="behavior-input-wrapper">
+                <input type="text" id="custom-input" placeholder="新增(可以直接輸入)..." onfocus="handleCustomFocus(this)" oninput="handleCustomInput(this)">
+            </div>
+        </div>
+
+        <div class="log-header">
+            <h3>2. 觀測記錄</h3>
+            <button class="btn-danger-outline" onclick="clearAllLogs()">刪除所有觀測記錄</button>
+        </div>
+        
+        <div class="log-container" id="log-list"></div>
+
+        <!-- 匯出與雲端按鈕區 -->
+        <div style="margin-top: auto; display: flex; flex-direction: column; gap: 5px;">
+             <button class="btn-success" onclick="exportToExcel()">
+                匯出記錄 (.Excel / .xls)
+            </button>
+            <!-- 雲端設定與上傳 -->
+            <div style="display:flex; gap: 5px;">
+                 <button class="btn-outline" style="flex:1" onclick="openCloudConfig()">⚙️ Google Sheet 設定</button>
+                 <button class="btn-primary" style="flex:2" onclick="uploadToGoogleSheet()">☁️ 上傳到雲端</button>
+            </div>
+        </div>
+    </aside>
+</main>
+
+<!-- 雲端設定 Modal -->
+<div id="cloudModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Google Apps Script 設定</h3>
+        <p style="font-size: 0.9rem; color: #666;">
+            請輸入您部署的 Google Apps Script 網頁應用程式網址 (以 https://script.google.com 開頭)：
+        </p>
+        <textarea id="gas-url-input" rows="4" style="width: 100%; border: 1px solid #ccc; border-radius: 4px; padding: 5px;"></textarea>
+        <div class="modal-footer">
+            <button class="btn-outline" onclick="closeCloudConfig()">取消</button>
+            <button class="btn-primary" onclick="saveCloudConfig()">儲存設定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 全域變數 ---
+    let currentBehavior = '認真';
+    let isCustomMode = false;
+    let logs = [];
+    let currentMode = 'classroom'; 
+    let gasUrl = ''; // Google Apps Script URL
+
+    const colorMap = {
+        '認真': '#28a745', '搶答': '#007bff', '睡覺': '#6f42c1',
+        '聊天': '#fd7e14', '滑手機': '#dc3545', '分心': '#6c757d',
+        '換座位': '#17a2b8'
+    };
+    const CUSTOM_COLOR = '#d63384';
+
+    window.onload = function() {
+        loadFromStorage();
+        // 讀取 GAS URL
+        gasUrl = localStorage.getItem('gas_url') || '';
+    };
+
+    // --- 系統備份與還原 (解決 GitHub Pages 存檔消失問題) ---
+    function saveSystemConfig() {
+        const backupData = {
+            timestamp: new Date().toISOString(),
+            localStorage: JSON.stringify(localStorage)
+        };
+        const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `座位表系統備份_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function loadSystemConfig(input) {
+        const file = input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = JSON.parse(e.target.result);
+                if(data.localStorage) {
+                    if(confirm("確定要還原系統設定嗎？目前的資料將被覆蓋。")) {
+                        const storedData = JSON.parse(data.localStorage);
+                        // 清空並寫入
+                        localStorage.clear();
+                        for (let key in storedData) {
+                            localStorage.setItem(key, storedData[key]);
+                        }
+                        alert("還原成功！頁面將重新整理。");
+                        location.reload();
+                    }
+                } else {
+                    alert("無效的備份檔案格式。");
+                }
+            } catch(err) {
+                alert("讀取檔案失敗：" + err);
+            }
+            input.value = ''; // Reset input
+        };
+        reader.readAsText(file);
+    }
+
+    // --- 雲端功能 ---
+    function openCloudConfig() {
+        document.getElementById('cloudModal').style.display = 'flex';
+        document.getElementById('gas-url-input').value = gasUrl;
+    }
+    
+    function closeCloudConfig() {
+        document.getElementById('cloudModal').style.display = 'none';
+    }
+    
+    function saveCloudConfig() {
+        const url = document.getElementById('gas-url-input').value.trim();
+        if(url) {
+            gasUrl = url;
+            localStorage.setItem('gas_url', gasUrl);
+            alert("網址已儲存！");
+            closeCloudConfig();
+        } else {
+            alert("請輸入網址");
+        }
+    }
+
+    function uploadToGoogleSheet() {
+        if (!gasUrl) {
+            alert("請先設定 Google Sheet (GAS) 網址！");
+            openCloudConfig();
+            return;
+        }
+        
+        if (logs.length === 0) {
+            alert("目前沒有任何記錄可上傳。");
+            return;
+        }
+        
+        // 修改：先確認班級代碼
+        let classCode = document.getElementById('class-code').value.trim();
+        if (!classCode) {
+            classCode = prompt("您尚未輸入班級代碼，請輸入代碼 (例如 101) 以便分類分頁：", "未分類班級");
+            // 如果使用者按取消
+            if (!classCode) return;
+            // 回填到輸入框
+            document.getElementById('class-code').value = classCode;
+        }
+        
+        // 修正: 移除確認視窗
+        // if(!confirm(`即將將記錄上傳至班級分頁：【${classCode}】，確定嗎？`)) return;
+        
+        const payload = {
+            classCode: classCode,
+            logs: logs
+        };
+
+        const btn = document.querySelector('button[onclick="uploadToGoogleSheet()"]');
+        const originalText = btn.innerText;
+        btn.innerText = "上傳中...";
+        btn.disabled = true;
+
+        // 使用 fetch 發送
+        fetch(gasUrl, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: {
+                 "Content-Type": "text/plain;charset=utf-8"
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if(data.result === 'success') {
+                alert(`上傳成功！共 ${data.count} 筆記錄已寫入 Google Sheet。`);
+            } else {
+                alert("上傳失敗：" + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert("上傳發生錯誤，請檢查網址是否正確，或 Google Script 權限是否設為「所有人」。");
+        })
+        .finally(() => {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        });
+    }
+
+    // --- 模式切換邏輯 ---
+    function switchMode(mode) {
+        if (currentMode === mode) return; 
+        currentMode = mode;
+        
+        document.getElementById('mode-classroom').classList.remove('active');
+        document.getElementById('mode-lab').classList.remove('active');
+        document.getElementById(`mode-${mode}`).classList.add('active');
+        
+        const grid = document.getElementById('seating-grid');
+        const podium = document.getElementById('podium');
+
+        if (mode === 'lab') {
+            grid.classList.add('lab-mode');
+            podium.style.display = 'none'; 
+        } else {
+            grid.classList.remove('lab-mode');
+            podium.style.display = 'block'; 
+        }
+
+        // 注意：ID 已經交換，rows 輸入框現在對應 "橫(列)" (Vertical Count / Rows)
+        const rowInput = document.getElementById('rows');
+        const colInput = document.getElementById('cols');
+        
+        if (mode === 'lab') {
+            rowInput.value = 5;
+            colInput.value = 10;
+            rowInput.disabled = true;
+            colInput.disabled = true;
+        } else {
+            rowInput.disabled = false;
+            colInput.disabled = false;
+            const savedR = localStorage.getItem('pref_rows_classroom') || 5;
+            const savedC = localStorage.getItem('pref_cols_classroom') || 6;
+            rowInput.value = savedR;
+            colInput.value = savedC;
+        }
+        loadFromStorage();
+    }
+
+    function getKey(prefix) {
+        return `${prefix}_${currentMode}`;
+    }
+
+    function manualGenerate() {
+        if(!confirm(`確定要重新生成【${currentMode === 'classroom' ? '教室' : '實驗室'}】座位嗎？\n這將會「清空」目前模式座位上的所有名字與記錄！`)) return;
+        
+        if(currentMode === 'lab') {
+            document.getElementById('rows').value = 5;
+            document.getElementById('cols').value = 10;
+        }
+
+        const rows = document.getElementById('rows').value;
+        const cols = document.getElementById('cols').value;
+        
+        localStorage.setItem(getKey('student_names'), '{}');
+        localStorage.setItem(getKey('student_counts'), '{}');
+        logs = []; 
+        updateLogDisplay();
+        
+        generateSeats(rows, cols, false);
+    }
+
+    function generateSeats(rows, cols, keepData = true) {
+        const grid = document.getElementById('seating-grid');
+        
+        if (currentMode === 'classroom') {
+            localStorage.setItem(getKey('pref_rows'), rows);
+            localStorage.setItem(getKey('pref_cols'), cols);
+        }
+
+        grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        grid.innerHTML = '';
+
+        const savedNames = keepData ? JSON.parse(localStorage.getItem(getKey('student_names')) || '{}') : {};
+        const savedCounts = keepData ? JSON.parse(localStorage.getItem(getKey('student_counts')) || '{}') : {};
+
+        for (let r = 1; r <= rows; r++) {
+            for (let c = 1; c <= cols; c++) {
+                const seatId = `r${r}-c${c}`;
+                const seatDiv = document.createElement('div');
+                seatDiv.className = 'seat';
+                seatDiv.id = `seat-${seatId}`;
+                seatDiv.onclick = (e) => handleSeatClick(seatId, e);
+
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = `${r}-${c}`;
+                input.value = savedNames[seatId] || '';
+                input.oninput = (e) => saveName(seatId, e.target.value);
+                input.onclick = (e) => e.stopPropagation(); 
+
+                const badge = document.createElement('badge');
+                badge.className = 'seat-badge';
+                badge.id = `badge-${seatId}`;
+                if (savedCounts[seatId] && savedCounts[seatId] > 0) {
+                    badge.innerText = savedCounts[seatId];
+                    badge.style.opacity = 1;
+                }
+
+                seatDiv.appendChild(input);
+                seatDiv.appendChild(badge);
+                grid.appendChild(seatDiv);
+            }
+        }
+    }
+
+    function processCSV(inputElement) {
+        const file = inputElement.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const text = e.target.result;
+            const lines = text.split(/\r\n|\n/);
+            
+            // 暫存所有找到的名字 (扁平化清單)
+            let flatNameList = [];
+
+            lines.forEach(line => {
+                if(line.trim() === '') return;
+                const cells = line.split(',');
+                cells.forEach(cell => {
+                    let name = cell.trim().replace(/^"|"$/g, '');
+                    if (name && name !== '(X)' && name !== '講桌') {
+                        flatNameList.push(name);
+                    }
+                });
+            });
+
+            if (flatNameList.length === 0) { alert('檔案內容為空或無有效姓名'); return; }
+
+            let maxRow = 0;
+            let maxCol = 0;
+            let newNames = {};
+
+            if (currentMode === 'lab') {
+                maxRow = 5;
+                maxCol = 10;
+                let listIndex = 0;
+                for (let r = 1; r <= maxRow; r++) {
+                    for (let c = 1; c <= maxCol; c++) {
+                        if (listIndex < flatNameList.length) {
+                            const seatId = `r${r}-c${c}`;
+                            newNames[seatId] = flatNameList[listIndex];
+                            listIndex++;
+                        }
+                    }
+                }
+                alert(`已將 CSV 中的 ${flatNameList.length} 筆姓名依序填入實驗室座位表 (5x10)`);
+            } else {
+                // 教室模式：自動偵測並移除空欄
+                
+                // 1. 先將 CSV 解析成二維陣列
+                let rawData = [];
+                lines.forEach(line => {
+                    if (line.trim() === '') return;
+                    // 簡易 CSV 切割，移除引號
+                    let cells = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+                    // 如果整列都是空的，略過
+                    if (cells.every(c => c === '')) return;
+                    rawData.push(cells);
+                });
+
+                if (rawData.length === 0) { alert('無有效資料'); return; }
+
+                // 2. 找出原始最大寬度
+                let rawMaxCol = 0;
+                rawData.forEach(row => { if(row.length > rawMaxCol) rawMaxCol = row.length; });
+                
+                // 3. 偵測哪些欄位是「全空」的 (從第0欄到最大寬度)
+                let emptyColIndices = new Set();
+                for (let c = 0; c < rawMaxCol; c++) {
+                    let isColEmpty = true;
+                    for (let r = 0; r < rawData.length; r++) {
+                        // 只要有一列在該欄位有值，就不是全空
+                        if (rawData[r][c] && rawData[r][c] !== '') {
+                            isColEmpty = false;
+                            break;
+                        }
+                    }
+                    if (isColEmpty) emptyColIndices.add(c);
+                }
+
+                // 4. 重建移除空欄後的資料
+                let compactData = [];
+                rawData.forEach(row => {
+                    let newRow = [];
+                    for (let c = 0; c < row.length; c++) {
+                        // 只保留非空欄
+                        if (!emptyColIndices.has(c)) {
+                            newRow.push(row[c]);
+                        }
+                    }
+                    compactData.push(newRow);
+                });
+
+                // 5. 設定新的 Grid 大小
+                maxRow = compactData.length;
+                maxCol = 0;
+                compactData.forEach(row => { if(row.length > maxCol) maxCol = row.length; });
+                
+                // 6. 填入資料
+                compactData.forEach((row, rIndex) => {
+                    row.forEach((cellText, cIndex) => {
+                        let name = cellText; // 已經處理過 trim
+                        if (name) {
+                            const seatId = `r${rIndex+1}-c${cIndex+1}`;
+                            newNames[seatId] = name;
+                        }
+                    });
+                });
+                
+                document.getElementById('rows').value = maxRow;
+                document.getElementById('cols').value = maxCol;
+                
+                // 顯示更清楚的訊息
+                const removedCount = emptyColIndices.size;
+                let msg = `已匯入教室座位表: ${maxRow} 列 x ${maxCol} 排`;
+                if (removedCount > 0) {
+                    msg += ` (已自動移除 ${removedCount} 個空白欄位)`;
+                }
+                alert(msg);
+            }
+
+            localStorage.setItem(getKey('student_names'), JSON.stringify(newNames));
+            if(confirm(`匯入成功！是否要同時清除【${currentMode === 'classroom' ? '教室' : '實驗室'}】模式的舊上課計數？(建議選確定)`)) {
+                localStorage.setItem(getKey('student_counts'), '{}');
+            }
+            generateSeats(maxRow, maxCol, true);
+            inputElement.value = '';
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    function saveClassData() {
+        const code = document.getElementById('class-code').value.trim();
+        if (!code || code.length !== 3 || isNaN(code)) {
+            alert('請輸入 3 位數字的班級代碼 (例如: 101, 205)');
+            return;
+        }
+
+        const dataToSave = {
+            rows: document.getElementById('rows').value,
+            cols: document.getElementById('cols').value,
+            names: JSON.parse(localStorage.getItem(getKey('student_names')) || '{}')
+        };
+
+        const key = `class_setup_${code}_${currentMode}`;
+        localStorage.setItem(key, JSON.stringify(dataToSave));
+        alert(`已儲存班級 [${code}] 的【${currentMode === 'classroom' ? '教室' : '實驗室'}】座位表！`);
+    }
+
+    function loadClassData() {
+        const code = document.getElementById('class-code').value.trim();
+        if (!code) { alert('請輸入班級代碼'); return; }
+
+        const key = `class_setup_${code}_${currentMode}`;
+        const savedDataStr = localStorage.getItem(key);
+
+        if (!savedDataStr) {
+            alert(`找不到代碼 [${code}] 在【${currentMode === 'classroom' ? '教室' : '實驗室'}】模式的存檔。`);
+            return;
+        }
+
+        if(confirm(`確定要讀取班級 [${code}] 的【${currentMode === 'classroom' ? '教室' : '實驗室'}】座位表嗎？`)) {
+            const data = JSON.parse(savedDataStr);
+            document.getElementById('rows').value = data.rows;
+            document.getElementById('cols').value = data.cols;
+            localStorage.setItem(getKey('student_names'), JSON.stringify(data.names));
+            localStorage.setItem(getKey('student_counts'), '{}');
+            logs = [];
+            updateLogDisplay();
+            generateSeats(data.rows, data.cols, true);
+        }
+    }
+
+    function selectBehavior(behavior, btnElement) {
+        isCustomMode = false;
+        currentBehavior = behavior;
+        document.querySelectorAll('.behavior-btn').forEach(btn => btn.classList.remove('selected'));
+        document.getElementById('custom-input').classList.remove('active');
+        btnElement.classList.add('selected');
+    }
+
+    function handleCustomFocus(input) {
+        isCustomMode = true;
+        document.querySelectorAll('.behavior-btn').forEach(btn => btn.classList.remove('selected'));
+        input.classList.add('active');
+        if(input.value.trim()) {
+            currentBehavior = input.value.trim();
+        } else {
+            currentBehavior = "自訂記錄";
+        }
+    }
+
+    function handleCustomInput(input) {
+        if(isCustomMode) {
+            const val = input.value.trim();
+            currentBehavior = val ? val : "自訂記錄";
+        }
+    }
+
+    function handleSeatClick(seatId, event) {
+        const input = document.querySelector(`#seat-${seatId} input`);
+        const name = input.value.trim();
+
+        if (!name) {
+            alert("該座位無人或未輸入姓名");
+            input.focus();
+            return;
+        }
+
+        const seatDiv = document.getElementById(`seat-${seatId}`);
+        const behaviorColor = colorMap[currentBehavior] || CUSTOM_COLOR;
+        
+        seatDiv.style.borderColor = behaviorColor;
+        seatDiv.style.backgroundColor = behaviorColor + '11'; 
+        seatDiv.classList.add('active-click');
+        setTimeout(() => {
+            seatDiv.style.borderColor = '';
+            seatDiv.style.backgroundColor = '#fdfdfd';
+            seatDiv.classList.remove('active-click');
+        }, 300);
+
+        const timestamp = new Date();
+        const timeString = timestamp.toLocaleTimeString('zh-TW', { hour12: false });
+        
+        const logEntry = {
+            id: Date.now(),
+            seatId: seatId,
+            name: name,
+            behavior: currentBehavior,
+            time: timeString,
+            fullTime: timestamp.toISOString()
+        };
+
+        logs.push(logEntry);
+        updateLogDisplay();
+        updateSeatCount(seatId, 1);
+        saveLogsToStorage();
+    }
+
+    function updateLogDisplay() {
+        const list = document.getElementById('log-list');
+        list.innerHTML = '';
+        [...logs].reverse().forEach(log => {
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            const color = colorMap[log.behavior] || CUSTOM_COLOR;
+            item.innerHTML = `
+                <div style="display:flex; align-items:center;">
+                    <span class="log-time">[${log.time}]</span>
+                    <span class="log-info">${log.name}</span>
+                    <span class="log-tag" style="background-color: ${color}">${log.behavior}</span>
+                </div>
+                <div class="del-btn" onclick="deleteLog(${log.id}, '${log.seatId}')" title="刪除">✕</div>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    function deleteLog(logId, seatId) {
+        logs = logs.filter(log => log.id !== logId);
+        updateSeatCount(seatId, -1);
+        updateLogDisplay();
+        saveLogsToStorage();
+    }
+    
+    function clearAllLogs() {
+        if(!confirm("確定要刪除「所有」觀測記錄嗎？\n這將會把所有學生的行為計數歸零！")) return;
+        logs = [];
+        updateLogDisplay();
+        localStorage.setItem(getKey('student_counts'), '{}');
+        const badges = document.querySelectorAll('.seat-badge');
+        badges.forEach(badge => {
+            badge.style.opacity = 0;
+            badge.innerText = '';
+        });
+        saveLogsToStorage();
+    }
+
+    function updateSeatCount(seatId, delta) {
+        let counts = JSON.parse(localStorage.getItem(getKey('student_counts')) || '{}');
+        let current = counts[seatId] || 0;
+        current += delta;
+        if (current < 0) current = 0;
+        counts[seatId] = current;
+        localStorage.setItem(getKey('student_counts'), JSON.stringify(counts));
+
+        const badge = document.getElementById(`badge-${seatId}`);
+        if (current > 0) {
+            badge.innerText = current;
+            badge.style.opacity = 1;
+        } else {
+            badge.style.opacity = 0;
+        }
+    }
+
+    function saveName(seatId, name) {
+        let names = JSON.parse(localStorage.getItem(getKey('student_names')) || '{}');
+        names[seatId] = name;
+        localStorage.setItem(getKey('student_names'), JSON.stringify(names));
+    }
+
+    function saveLogsToStorage() {
+        localStorage.setItem('class_logs', JSON.stringify(logs));
+    }
+
+    function loadFromStorage() {
+        const savedLogs = localStorage.getItem('class_logs');
+        if (savedLogs) {
+            logs = JSON.parse(savedLogs);
+            updateLogDisplay();
+        }
+        
+        if (currentMode === 'lab') {
+            document.getElementById('rows').value = 5;
+            document.getElementById('cols').value = 10;
+            document.getElementById('rows').disabled = true;
+            document.getElementById('cols').disabled = true;
+            const grid = document.getElementById('seating-grid');
+            grid.classList.add('lab-mode');
+            document.getElementById('podium').style.display = 'none';
+            generateSeats(5, 10, true);
+        } else {
+            const r = localStorage.getItem('pref_rows_classroom') || 5;
+            const c = localStorage.getItem('pref_cols_classroom') || 6;
+            document.getElementById('rows').value = r;
+            document.getElementById('cols').value = c;
+            document.getElementById('rows').disabled = false;
+            document.getElementById('cols').disabled = false;
+            const grid = document.getElementById('seating-grid');
+            grid.classList.remove('lab-mode');
+            document.getElementById('podium').style.display = 'block';
+            generateSeats(r, c, true);
+        }
+    }
+
+    function exportToExcel() {
+        if (logs.length === 0) {
+            alert("無記錄可匯出");
+            return;
+        }
+        
+        let classCode = document.getElementById('class-code').value.trim();
+        if(!classCode) classCode = "未命名班級";
+
+        let tableHTML = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" 
+                  xmlns:x="urn:schemas-microsoft-com:office:excel" 
+                  xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+                <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+                <!--[if gte mso 9]>
+                <xml>
+                <x:ExcelWorkbook>
+                <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                <x:Name>上課記錄</x:Name>
+                <x:WorksheetOptions>
+                <x:DisplayGridlines/>
+                </x:WorksheetOptions>
+                </x:ExcelWorksheet>
+                </x:ExcelWorksheets>
+                </x:ExcelWorkbook>
+                </xml>
+                <![endif]-->
+                <style>
+                    table { border-collapse: collapse; }
+                    td, th { 
+                        border: 1px solid black; 
+                        font-size: 12pt; 
+                        text-align: center; 
+                        vertical-align: middle;
+                        height: 35px;
+                    }
+                </style>
+            </head>
+            <body>
+                <table>
+                    <col width="100">
+                    <col width="250">
+                    <col width="150">
+                    <col width="200">
+                    <tr>
+                        <th style="background-color: #f0f0f0;">序號</th>
+                        <th style="background-color: #f0f0f0;">發生時間</th>
+                        <th style="background-color: #f0f0f0;">姓名</th>
+                        <th style="background-color: #f0f0f0;">行為類別</th>
+                    </tr>
+        `;
+
+        logs.forEach((log, index) => {
+            const cleanName = log.name.replace(/,/g, ''); 
+            tableHTML += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${log.fullTime}</td>
+                    <td>${cleanName}</td>
+                    <td>${log.behavior}</td>
+                </tr>
+            `;
+        });
+
+        tableHTML += `</table></body></html>`;
+
+        const blob = new Blob([tableHTML], { type: 'application/vnd.ms-excel' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        const dateStr = new Date().toISOString().slice(0,10);
+        link.download = `${classCode}_${dateStr}_上課記錄.xls`; 
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
+</body>
+</html>

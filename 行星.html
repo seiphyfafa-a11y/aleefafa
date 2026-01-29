@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互動物理：行星軌道模擬</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505; /* 極深灰，接近黑 */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* 控制面板樣式 */
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(30, 30, 30, 0.8);
+            backdrop-filter: blur(8px);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            width: 280px;
+            z-index: 10;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: #ccc;
+            margin-bottom: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00ffff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px #00ffff;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: linear-gradient(45deg, #ff0055, #ff5500);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: opacity 0.2s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .value-display {
+            color: #00ffff;
+            font-family: monospace;
+        }
+
+        .status {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #888;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 控制面板 -->
+    <div id="controls">
+        <h2 style="margin-top:0; color: #ffcc00; text-shadow: 0 0 10px rgba(255,204,0,0.5);">🪐 軌道實驗室</h2>
+        
+        <div class="control-group">
+            <label>恆星質量 (Gravity) <span id="massVal" class="value-display">1000</span></label>
+            <input type="range" id="starMass" min="200" max="3000" value="1000">
+        </div>
+
+        <div class="control-group">
+            <label>初始發射速度 <span id="speedVal" class="value-display">5.0</span></label>
+            <input type="range" id="initSpeed" min="2" max="10" step="0.1" value="5.0">
+        </div>
+
+        <button id="resetBtn">重置系統 (Reset)</button>
+        <div class="status">提示：拖動質量滑桿可即時改變引力</div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 畫布尺寸設定
+        let width, height;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 物理參數
+        const G = 0.5; // 萬有引力常數 (模擬用數值，非真實物理常數)
+        let animationId;
+
+        // UI 綁定
+        const starMassInput = document.getElementById('starMass');
+        const initSpeedInput = document.getElementById('initSpeed');
+        const resetBtn = document.getElementById('resetBtn');
+        const massValDisplay = document.getElementById('massVal');
+        const speedValDisplay = document.getElementById('speedVal');
+
+        // 模擬物件狀態
+        const state = {
+            star: {
+                x: 0,
+                y: 0,
+                mass: 1000,
+                radius: 25,
+                color: '#ffcc00',
+                glow: '#ffaa00'
+            },
+            planet: {
+                x: 0,
+                y: 0,
+                vx: 0,
+                vy: 0,
+                mass: 10, // 行星質量相對恆星可忽略，但在 F=ma 中仍需計算
+                radius: 8,
+                color: '#00ffff',
+                glow: '#00aaaa',
+                trail: [] // 用於繪製長軌跡（如果需要更持久的）
+            },
+            backgroundStars: []
+        };
+
+        // 初始化背景星空
+        function initBackgroundStars() {
+            state.backgroundStars = [];
+            for(let i=0; i<150; i++) {
+                state.backgroundStars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    size: Math.random() * 2,
+                    opacity: Math.random()
+                });
+            }
+        }
+
+        // 初始化/重置系統
+        function initSystem() {
+            // 設定恆星在畫面中心
+            state.star.x = width / 2;
+            state.star.y = height / 2;
+            state.star.mass = parseInt(starMassInput.value);
+
+            // 設定行星初始位置 (恆星上方 200px)
+            const orbitRadius = 250;
+            state.planet.x = state.star.x;
+            state.planet.y = state.star.y - orbitRadius;
+
+            // 設定行星初始速度 (水平方向)
+            // 速度方向必須與半徑垂直，才能形成圓/橢圓軌道
+            const speed = parseFloat(initSpeedInput.value);
+            state.planet.vx = speed; 
+            state.planet.vy = 0;
+
+            // 清空畫布
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 更新 UI 顯示
+            massValDisplay.textContent = state.star.mass;
+            speedValDisplay.textContent = speed;
+        }
+
+        // 物理核心運算
+        function updatePhysics() {
+            const dx = state.star.x - state.planet.x;
+            const dy = state.star.y - state.planet.y;
+            const distSq = dx*dx + dy*dy;
+            const dist = Math.sqrt(distSq);
+
+            // 避免除以零或過度靠近導致的彈射
+            if (dist < state.star.radius) {
+                // 簡單的碰撞重置，或者讓它穿過去（這裡選擇重置讓視覺不混亂）
+                // initSystem(); 
+                // 或者只是讓力不再增加
+            }
+
+            // 計算萬有引力 F = G * M * m / r^2
+            const force = (G * state.star.mass * state.planet.mass) / distSq;
+
+            // 計算加速度 F = ma => a = F/m
+            const ax = (force * dx / dist) / state.planet.mass;
+            const ay = (force * dy / dist) / state.planet.mass;
+
+            // 更新速度
+            state.planet.vx += ax;
+            state.planet.vy += ay;
+
+            // 更新位置
+            state.planet.x += state.planet.vx;
+            state.planet.y += state.planet.vy;
+        }
+
+        function draw() {
+            // 1. 產生軌跡效果：不要完全清除畫布，而是覆蓋一層半透明的黑色
+            // 這會讓上一幀的畫面留下殘影，形成美麗的軌跡
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.08)'; 
+            ctx.fillRect(0, 0, width, height);
+
+            // 2. 繪製背景靜態星星 (閃爍效果)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            state.backgroundStars.forEach(star => {
+                if (Math.random() > 0.99) star.opacity = Math.random();
+                ctx.globalAlpha = star.opacity;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI*2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+
+            // 3. 繪製恆星 (太陽)
+            ctx.save();
+            ctx.shadowBlur = 40;
+            ctx.shadowColor = state.star.glow;
+            ctx.fillStyle = state.star.color;
+            ctx.beginPath();
+            ctx.arc(state.star.x, state.star.y, state.star.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 恆星呼吸效果
+            ctx.shadowBlur = 20 + Math.sin(Date.now() / 200) * 10;
+            ctx.restore();
+
+            // 4. 繪製行星
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = state.planet.glow;
+            ctx.fillStyle = state.planet.color;
+            ctx.beginPath();
+            ctx.arc(state.planet.x, state.planet.y, state.planet.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function loop() {
+            updatePhysics();
+            draw();
+            animationId = requestAnimationFrame(loop);
+        }
+
+        // 事件監聽
+        starMassInput.addEventListener('input', (e) => {
+            state.star.mass = parseInt(e.target.value);
+            massValDisplay.textContent = state.star.mass;
+            // 視覺回饋：當質量改變時，恆星顏色閃爍一下
+            state.star.color = '#fff';
+            setTimeout(() => state.star.color = '#ffcc00', 100);
+        });
+
+        initSpeedInput.addEventListener('input', (e) => {
+            speedValDisplay.textContent = e.target.value;
+        });
+        
+        // 改變速度滑桿時，只有在重置時才生效，或者可以設計成即時推力（這裡選擇重置生效較單純）
+        initSpeedInput.addEventListener('change', () => {
+             initSystem();
+        });
+
+        resetBtn.addEventListener('click', initSystem);
+
+        // 啟動
+        initBackgroundStars();
+        initSystem();
+        loop();
+
+    </script>
+</body>
+</html>
